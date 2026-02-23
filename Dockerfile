@@ -1,14 +1,27 @@
-# Use official Java 17 image
-FROM eclipse-temurin:17-jdk-alpine
-
-# Set working directory
+# ---- Build stage ----
+FROM maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /app
 
-# Copy built jar into container
-COPY target/*.jar app.jar
+# Copy pom and download deps first (better caching)
+COPY pom.xml .
+COPY .mvn .mvn
+COPY mvnw .
+RUN chmod +x mvnw
+RUN ./mvnw -q -DskipTests dependency:go-offline
 
-# Expose port (Render will inject PORT env var)
+# Copy source and build
+COPY src src
+RUN ./mvnw -DskipTests package
+
+# ---- Runtime stage ----
+FROM eclipse-temurin:17-jre-alpine
+WORKDIR /app
+
+# Copy jar from build stage
+COPY --from=build /app/target/*.jar app.jar
+
+# Render uses PORT env var
 EXPOSE 8080
+ENV SERVER_PORT=8080
 
-# Run the application
 ENTRYPOINT ["java","-jar","/app/app.jar"]
